@@ -1,0 +1,75 @@
+version: "3.9"
+
+services:
+  clickhouse:
+    image: yandex/clickhouse-server:latest
+    hostname: clickhouse
+    restart: always
+    volumes:
+      - ./clickhouse:/var/lib/clickhouse
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    networks:
+      - mynet
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: "admin"
+      GF_SECURITY_ADMIN_PASSWORD: "admin"
+    volumes:
+      - ./grafana-storage:/var/lib/grafana
+    networks:
+      - mynet
+
+  rabbitmq:
+    image: rabbitmq:3.10.7-management
+    hostname: rabbitmq
+    restart: always
+    environment:
+      RABBITMQ_DEFAULT_USER: "rmuser"
+      RABBITMQ_DEFAULT_PASS: "rmpassword"
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "- disk_free_limit 2147483648"
+    volumes:
+      - ./rabbitmq:/var/lib/rabbitmq
+    ports:
+      - "15672:15672"
+      - "5672:5672"
+    networks:
+      - mynet
+
+  parser:
+    build:
+      context: ./app/for_rabbit
+      dockerfile: Dockerfile
+    container_name: parser_container
+    restart: unless-stopped
+    env_file:
+      - ./app/for_rabbit/.env
+    environment:
+      - TOKEN=${TOKEN}
+    depends_on:
+      - rabbitmq
+    networks:
+      - mynet
+
+  consumer:
+    build:
+      context: ./app/for_clickhouse
+      dockerfile: Dockerfile
+    container_name: consumer_container
+    restart: unless-stopped
+    depends_on:
+      - rabbitmq
+      - clickhouse
+    networks:
+      - mynet
+
+networks:
+  mynet:
+    driver: bridge
